@@ -16,9 +16,24 @@ export default async function Courses() {
     title: string;
     description: string;
     category: string;
+    price: number;
+    is_premium: boolean;
+    currency: string;
+    is_enrolled: boolean | null;
+    expires_at: Date | null;
     lesson_count: number;
   }>(
-    `SELECT c.id,c.title,c.description,c.category,(SELECT count(*)::int FROM lessons l WHERE l.course_id=c.id AND l.published) AS lesson_count FROM courses c JOIN enrollments e ON e.course_id=c.id WHERE e.user_id=$1 AND e.active AND c.published ORDER BY c.created_at DESC`,
+    `SELECT c.id, c.title, c.description, c.category,
+            COALESCE(c.price, 0) as price,
+            COALESCE(c.is_premium, false) as is_premium,
+            COALESCE(c.currency, 'usd') as currency,
+            e.active as is_enrolled,
+            e.expires_at,
+            (SELECT count(*)::int FROM lessons l WHERE l.course_id=c.id AND l.published) AS lesson_count
+     FROM courses c
+     LEFT JOIN enrollments e ON e.course_id=c.id AND e.user_id=$1 AND e.active
+     WHERE c.published
+     ORDER BY e.active DESC NULLS LAST, c.created_at DESC`,
     [user.id],
   );
   return (
@@ -95,15 +110,41 @@ export default async function Courses() {
                 </span>
               </div>
               <div className="course-copy">
-                <span className="eyebrow">
-                  {course.lesson_count}{" "}
-                  {course.lesson_count === 1 ? "lesson" : "lessons"}
-                </span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                  <span className="eyebrow" style={{ margin: 0 }}>
+                    {course.lesson_count}{" "}
+                    {course.lesson_count === 1 ? "lesson" : "lessons"}
+                  </span>
+                  <span
+                    className="badge"
+                    style={{
+                      fontSize: "11px",
+                      padding: "2px 7px",
+                      borderRadius: "4px",
+                      background: course.is_premium
+                        ? "rgba(186, 110, 78, 0.15)"
+                        : "rgba(41, 76, 60, 0.12)",
+                      color: course.is_premium ? "#ba6e4e" : "var(--forest)",
+                    }}
+                  >
+                    {course.is_premium
+                      ? `$${(course.price / 100).toFixed(2)} · Premium`
+                      : "Free · Open"}
+                  </span>
+                </div>
                 <h3>{course.title}</h3>
                 <p>{course.description}</p>
-                <span className="course-link">
-                  Open course <ArrowUpRight size={17} />
-                </span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "12px" }}>
+                  <span className="course-link">
+                    {course.is_enrolled ? "Open course" : "View course"}{" "}
+                    <ArrowUpRight size={17} />
+                  </span>
+                  {course.is_enrolled && (
+                    <span style={{ fontSize: "11px", color: "var(--forest)", fontWeight: 600 }}>
+                      {course.expires_at ? "Enrolled" : "Lifetime Access"}
+                    </span>
+                  )}
+                </div>
               </div>
             </Link>
           ))}
