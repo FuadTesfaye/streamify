@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Check } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronDown, ArrowRight, Check } from "lucide-react";
 
 export function SegmentedCounter() {
   return (
@@ -41,7 +42,8 @@ export function SegmentedCounter() {
   );
 }
 
-export function FarceLanding() {
+export function StreamifyHero() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -50,75 +52,102 @@ export function FarceLanding() {
     e.preventDefault();
     if (!email) return;
     setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 3500);
+    setTimeout(() => {
+      router.push(`/login?email=${encodeURIComponent(email)}`);
+    }, 800);
   }
 
   return (
     <div className="farce-outer-wrapper">
       <div className="farce-card-frame">
-        {/* Background Image Layer */}
+        {/* Background Image Layer with Pixel Art Forest & Campfire */}
         <div className="farce-bg-layer" />
         <div className="farce-vignette-overlay" />
 
         {/* Top Header / Navigation Bar */}
         <header className="farce-header">
-          {/* Logo: Green leaf + farce */}
+          {/* Logo: Streamify brand + mark */}
           <Link href="/" className="farce-brand">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M21 3C21 3 14 3.2 9 8.2C5 12.2 4.2 17.5 4.2 19.8C4.2 20.3 4.7 20.8 5.2 20.8C7.5 20.8 12.8 20 16.8 16C21.8 11 21 3 21 3Z"
-                fill="#22c55e"
-              />
-              <path
-                d="M9.5 14.5L15 9"
-                stroke="#0e1511"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-              />
-            </svg>
-            <span className="farce-logo-text">farce</span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "28px",
+                height: "28px",
+                borderRadius: "8px",
+                background: "#22c55e",
+                color: "#0f1712",
+                fontWeight: 800,
+                fontSize: "14px",
+              }}
+            >
+              S
+            </span>
+            <span className="farce-logo-text">
+              streamify<span style={{ color: "#22c55e" }}>.</span>
+            </span>
+            <span
+              style={{
+                fontSize: "10px",
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                padding: "2px 7px",
+                borderRadius: "9999px",
+                background: "rgba(34, 197, 94, 0.15)",
+                color: "#4ade80",
+                border: "1px solid rgba(34, 197, 94, 0.3)",
+                marginLeft: "4px",
+              }}
+            >
+              GATEWAY
+            </span>
           </Link>
 
           {/* Navigation Items (Right Side) */}
           <div className="farce-nav-right">
             {/* Frosted Glass Pill Menu */}
             <nav className="farce-nav-pill">
-              <Link href="/courses" className="farce-nav-link">
-                Features
-              </Link>
-              <Link href="/courses" className="farce-nav-link">
-                Customers
-              </Link>
+              <a href="#architecture" className="farce-nav-link">
+                Architecture
+              </a>
+              <a href="#security" className="farce-nav-link">
+                Zero-Trust Model
+              </a>
               <div className="farce-dropdown-container">
                 <button
                   type="button"
                   className="farce-nav-link farce-dropdown-trigger"
                   onClick={() => setDropdownOpen(!dropdownOpen)}
                 >
-                  Use Cases <ChevronDown size={14} className={dropdownOpen ? "rotate-180" : ""} />
+                  Features <ChevronDown size={14} className={dropdownOpen ? "rotate-180" : ""} />
                 </button>
                 {dropdownOpen && (
                   <div className="farce-dropdown-menu">
-                    <Link href="/courses" onClick={() => setDropdownOpen(false)}>
-                      Automated Video Streaming
-                    </Link>
-                    <Link href="/courses" onClick={() => setDropdownOpen(false)}>
-                      Zero-Trust Access Control
-                    </Link>
-                    <Link href="/courses" onClick={() => setDropdownOpen(false)}>
-                      Institutional Training
-                    </Link>
+                    <a href="#architecture" onClick={() => setDropdownOpen(false)}>
+                      Ephemeral Playback Leases
+                    </a>
+                    <a href="#architecture" onClick={() => setDropdownOpen(false)}>
+                      Single-Stream Lock
+                    </a>
+                    <a href="#architecture" onClick={() => setDropdownOpen(false)}>
+                      Expiring Embed Links
+                    </a>
+                    <a href="#architecture" onClick={() => setDropdownOpen(false)}>
+                      Forensic Watermarking
+                    </a>
                   </div>
                 )}
               </div>
               <Link href="/courses" className="farce-nav-link">
-                Pricing
+                Courses
               </Link>
             </nav>
 
-            {/* Top Right 'Try for free' button */}
+            {/* Top Right 'Sign In' button */}
             <Link href="/login" className="farce-top-cta">
-              Try for free
+              Sign In
             </Link>
           </div>
         </header>
@@ -128,14 +157,14 @@ export function FarceLanding() {
           {/* Bottom Left Column: Headline + Email Pill */}
           <div className="farce-hero-left">
             <h1 className="farce-headline">
-              Build AI agents that<br />
-              work while you sleep
+              Stream private video<br />
+              with zero-trust access
             </h1>
 
             <form className="farce-email-pill" onSubmit={handleSubmit}>
               <input
                 type="email"
-                placeholder={submitted ? "Thanks for signing up!" : "Enter your email"}
+                placeholder={submitted ? "Redirecting to portal…" : "Enter your student email"}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -144,10 +173,12 @@ export function FarceLanding() {
               <button type="submit" disabled={submitted}>
                 {submitted ? (
                   <>
-                    <Check size={14} /> Joined
+                    <Check size={14} /> Opening…
                   </>
                 ) : (
-                  "Try for free"
+                  <>
+                    Enter Gateway <ArrowRight size={14} />
+                  </>
                 )}
               </button>
             </form>
@@ -159,7 +190,7 @@ export function FarceLanding() {
             <div className="farce-glass-card farce-stats-card">
               <SegmentedCounter />
               <p className="farce-card-desc">
-                Users use Farce to automate repetitive admin tasks.
+                Video playback leases protected across courses without public URL leakage.
               </p>
             </div>
 
@@ -179,25 +210,25 @@ export function FarceLanding() {
                     <rect x="8" y="8" width="8" height="8" fill="#ffffff" />
                   </svg>
                 </span>
-                <span className="farce-company-name">Paradigm</span>
+                <span className="farce-company-name">Paradigm Institute</span>
               </div>
 
               <p className="farce-quote">
-                “With Farce we went from juggling endless repetitive tasks to having an AI team that does it all.”
+                “With Streamify, our private YouTube lessons are protected by expiring leases and forensic watermarks.”
               </p>
 
               <div className="farce-author-row">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/eric-avatar.png"
-                  alt="Eric Smith"
+                  alt="Dr. Eric Smith"
                   className="farce-avatar-img"
                   width={34}
                   height={34}
                 />
                 <div className="farce-author-info">
-                  <span className="farce-author-name">Eric Smith</span>
-                  <span className="farce-author-role">VP of Engineering</span>
+                  <span className="farce-author-name">Dr. Eric Smith</span>
+                  <span className="farce-author-role">Director of Learning Technology</span>
                 </div>
               </div>
             </div>
