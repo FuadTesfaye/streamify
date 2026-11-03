@@ -1,0 +1,81 @@
+name: streamify-production
+services:
+  db:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: streamify_owner
+      POSTGRES_DB: streamify
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?Set APP_DATABASE_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/init-db.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U streamify_owner -d streamify"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7.4-bookworm
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "128mb",
+        "--maxmemory-policy",
+        "noeviction",
+      ]
+    volumes: ["redis_data:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  migrate:
+    build: { context: ., target: development }
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://streamify_owner:${POSTGRES_PASSWORD}@db:5432/streamify
+      MIGRATION_DATABASE_URL: postgresql://streamify_owner:${POSTGRES_PASSWORD}@db:5432/streamify
+    command: ["node", "--import", "tsx", "scripts/migrate.ts"]
+    depends_on:
+      db: { condition: service_healthy }
+  app:
+    build: { context: ., target: production }
+    restart: unless-stopped
+    environment:
+      APP_ORIGIN: ${APP_ORIGIN:?Set APP_ORIGIN}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:?Set MAIL_FROM}
+      SMTP_HOST: ${SMTP_HOST:?Set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:?Set SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE:?Set SMTP_SECURE}
+      DATABASE_URL: postgresql://streamify_app:${APP_DATABASE_PASSWORD}@db:5432/streamify
+      REDIS_URL: redis://redis:6379
+      TRUST_PROXY: "true"
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      APP_HOST: ${APP_HOST:?Set APP_HOST to the production domain}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

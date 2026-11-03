@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.agents
+.aws
+.codex
+.env
+.env.*
+*.tsbuildinfo
+playwright-report
+test-results
+bun.lock
+yarn.lock
