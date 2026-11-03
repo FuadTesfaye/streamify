@@ -228,6 +228,9 @@ const courseSchema = z.object({
   description: z.string().max(10000),
   category: z.string().trim().min(1).max(80),
   published: z.boolean(),
+  price: z.number().int().min(0).default(0),
+  isPremium: z.boolean().default(false),
+  currency: z.string().trim().min(3).max(5).default("usd"),
 });
 const lessonSchema = z.object({
   courseId: idSchema,
@@ -236,6 +239,9 @@ const lessonSchema = z.object({
   position: z.number().int().min(1).max(10000),
   video: z.string().max(500),
   published: z.boolean(),
+  provider: z.enum(["youtube", "mux", "cloudflare"]).default("youtube"),
+  visibility: z.enum(["free", "paid"]).default("free"),
+  playbackPolicy: z.enum(["public", "signed", "drm"]).default("public"),
 });
 async function adminMutation(request: Request, path: string[], user: Viewer) {
   await rateLimit("admin", user.id, 60);
@@ -316,13 +322,30 @@ async function adminMutation(request: Request, path: string[], user: Viewer) {
     const data = courseSchema.parse(body);
     if (path[2])
       await db.query(
-        "UPDATE courses SET title=$1,description=$2,category=$3,published=$4 WHERE id=$5",
-        [data.title, data.description, data.category, data.published, path[2]],
+        "UPDATE courses SET title=$1,description=$2,category=$3,published=$4,price=$5,is_premium=$6,currency=$7 WHERE id=$8",
+        [
+          data.title,
+          data.description,
+          data.category,
+          data.published,
+          data.price,
+          data.isPremium,
+          data.currency,
+          path[2],
+        ],
       );
     else
       await db.query(
-        "INSERT INTO courses(title,description,category,published) VALUES($1,$2,$3,$4)",
-        [data.title, data.description, data.category, data.published],
+        "INSERT INTO courses(title,description,category,published,price,is_premium,currency) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        [
+          data.title,
+          data.description,
+          data.category,
+          data.published,
+          data.price,
+          data.isPremium,
+          data.currency,
+        ],
       );
     await audit("course_updated", user.id);
     return ok();
@@ -330,31 +353,45 @@ async function adminMutation(request: Request, path: string[], user: Viewer) {
   if (path[1] === "lessons") {
     const data = lessonSchema.parse(body);
     let video: string;
-    try {
-      video = normalizeVideo(data.video);
-    } catch {
-      throw new AppError(
+    if (data.provider === "youtube") {
+      try {
+        video = normalizeVideo(data.video);
+      } catch {
+        throw new AppError(
+          400,
+          "INVALID_VIDEO",
+          "Enter a supported YouTube URL or video ID.",
+        );
+      }
+    } else {
+      video = data.video.trim();
+      assert(
+        video.length >= 4,
         400,
         "INVALID_VIDEO",
-        "Enter a supported YouTube URL or video ID.",
+        "Enter a valid stream playback ID or asset identifier.",
       );
     }
+
     if (path[2])
       await db.query(
-        "UPDATE lessons SET title=$1,description=$2,position=$3,video_id=$4,published=$5 WHERE id=$6 AND course_id=$7",
+        "UPDATE lessons SET title=$1,description=$2,position=$3,video_id=$4,published=$5,provider=$6,visibility=$7,playback_policy=$8 WHERE id=$9 AND course_id=$10",
         [
           data.title,
           data.description,
           data.position,
           video,
           data.published,
+          data.provider,
+          data.visibility,
+          data.playbackPolicy,
           path[2],
           data.courseId,
         ],
       );
     else
       await db.query(
-        "INSERT INTO lessons(course_id,title,description,position,video_id,published) VALUES($1,$2,$3,$4,$5,$6)",
+        "INSERT INTO lessons(course_id,title,description,position,video_id,published,provider,visibility,playback_policy) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
         [
           data.courseId,
           data.title,
@@ -362,10 +399,87 @@ async function adminMutation(request: Request, path: string[], user: Viewer) {
           data.position,
           video,
           data.published,
+          data.provider,
+          data.visibility,
+          data.playbackPolicy,
         ],
       );
     await audit("lesson_updated", user.id);
     return ok();
+  }
+  if (path[1] === "entitlements") {
+    if (request.method === "DELETE") {
+      const data = z
+        .object({ userId: idSchema, courseId: idSchema })
+        .parse(body);
+      await tx(async (client) => {
+        await lockAccount(client, data.userId);
+        await client.query(
+          "UPDATE enrollments SET active=false WHERE user_id=$1 AND course_id=$2",
+          [data.userId, data.courseId],
+        );
+        await client.query(
+          "UPDATE playback_sessions SET revoked_at=now() WHERE user_id=$1 AND lesson_id IN (SELECT id FROM lessons WHERE course_id=$2)",
+          [data.userId, data.courseId],
+        );
+        await audit(
+          "entitlement_revoked_by_admin",
+          user.id,
+          `${data.userId}:${data.courseId}`,
+          client,
+        );
+      });
+      return ok();
+    }
+
+    const data = z
+      .object({
+        email: emailSchema,
+        courseId: idSchema,
+        durationMonths: z.number().int().min(0).max(120).nullable().optional(),
+      })
+      .parse(body);
+
+    const [targetUser] = await rows<{ id: string }>(
+      'SELECT id FROM "user" WHERE LOWER(email) = LOWER($1)',
+      [data.email],
+    );
+    assert(
+      targetUser,
+      404,
+      "USER_NOT_FOUND",
+      "No student found with this email address.",
+    );
+
+    let expiresAt: Date | null = null;
+    if (data.durationMonths && data.durationMonths > 0) {
+      expiresAt = new Date();
+      expiresAt.setMonth(expiresAt.getMonth() + data.durationMonths);
+    }
+
+    await tx(async (client) => {
+      await lockAccount(client, targetUser.id);
+      await client.query(
+        `INSERT INTO enrollments(user_id, course_id, active, expires_at)
+         VALUES ($1, $2, true, $3)
+         ON CONFLICT (user_id, course_id)
+         DO UPDATE SET active=true, expires_at=EXCLUDED.expires_at`,
+        [targetUser.id, data.courseId, expiresAt],
+      );
+      await audit(
+        "entitlement_granted_by_admin",
+        user.id,
+        `${targetUser.id}:${data.courseId}`,
+        client,
+      );
+    });
+
+    return NextResponse.json({
+      ok: true,
+      userId: targetUser.id,
+      courseId: data.courseId,
+      expiresAt: expiresAt ? expiresAt.toISOString() : null,
+    });
   }
   if (path[1] === "invitations") {
     const data = z

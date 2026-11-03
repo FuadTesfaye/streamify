@@ -29,6 +29,9 @@ export type AdminCourse = {
   description: string;
   category: string;
   published: boolean;
+  price?: number;
+  is_premium?: boolean;
+  currency?: string;
 };
 
 export type AdminLesson = {
@@ -39,6 +42,9 @@ export type AdminLesson = {
   position: number;
   video_id: string;
   published: boolean;
+  provider?: "youtube" | "mux" | "cloudflare";
+  visibility?: "free" | "paid";
+  playback_policy?: "public" | "signed" | "drm";
 };
 
 export type AdminUser = {
@@ -59,6 +65,21 @@ export type AdminEnrollment = {
   active: boolean;
   course_title: string;
   user_email: string;
+  expires_at?: string | null;
+};
+
+export type AdminPayment = {
+  id: string;
+  user_id: string;
+  user_email: string;
+  course_id: string;
+  course_title: string;
+  amount: number;
+  currency: string;
+  provider: string;
+  transaction_reference: string;
+  status: string;
+  created_at: string;
 };
 
 export type AdminInvitation = {
@@ -102,6 +123,7 @@ type Props = {
     expires_at: string;
   }[];
   playbacks: AdminPlayback[];
+  payments?: AdminPayment[];
 };
 
 export function AdminPanel({
@@ -114,6 +136,7 @@ export function AdminPanel({
   events,
   browsers,
   playbacks,
+  payments = [],
 }: Props) {
   const router = useRouter();
   const [tab, setTab] = useState("gateway");
