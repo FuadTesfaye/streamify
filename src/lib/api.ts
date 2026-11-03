@@ -239,7 +239,79 @@ const lessonSchema = z.object({
 });
 async function adminMutation(request: Request, path: string[], user: Viewer) {
   await rateLimit("admin", user.id, 60);
+
+  if (request.method === "DELETE" && path[1] === "courses" && path[2]) {
+    await tx(async (client) => {
+      await client.query("DELETE FROM enrollments WHERE course_id=$1", [path[2]]);
+      await client.query(
+        "DELETE FROM playback_sessions WHERE lesson_id IN (SELECT id FROM lessons WHERE course_id=$1)",
+        [path[2]],
+      );
+      await client.query("DELETE FROM lessons WHERE course_id=$1", [path[2]]);
+      await client.query("DELETE FROM courses WHERE id=$1", [path[2]]);
+      await audit("course_deleted", user.id, path[2], client);
+    });
+    return ok();
+  }
+
+  if (request.method === "DELETE" && path[1] === "lessons" && path[2]) {
+    await tx(async (client) => {
+      await client.query("DELETE FROM playback_sessions WHERE lesson_id=$1", [path[2]]);
+      await client.query("DELETE FROM lessons WHERE id=$1", [path[2]]);
+      await audit("lesson_deleted", user.id, path[2], client);
+    });
+    return ok();
+  }
+
+  if (path[1] === "playbacks" && path[2]) {
+    await tx(async (client) => {
+      await client.query(
+        "UPDATE playback_sessions SET revoked_at=now() WHERE id=$1",
+        [path[2]],
+      );
+      await audit("playback_terminated_by_admin", user.id, path[2], client);
+    });
+    return ok();
+  }
+
+  if (path[1] === "prune") {
+    await tx(async (client) => {
+      await client.query(
+        "DELETE FROM security_events WHERE created_at < now() - interval '30 days'",
+      );
+      await audit("events_pruned", user.id, undefined, client);
+    });
+    return ok();
+  }
+
   const body = await jsonBody(request);
+
+  if (path[1] === "invitations" && path[2] === "link") {
+    const data = z
+      .object({ email: emailSchema, courseId: idSchema.optional() })
+      .parse(body);
+    const credential = token();
+    const existing = await rows('SELECT id FROM "user" WHERE email=$1', [
+      data.email,
+    ]);
+    assert(
+      !existing.length,
+      409,
+      "ALREADY_REGISTERED",
+      "This student already has an account. Use enrollment management.",
+    );
+    await db.query(
+      "INSERT INTO invitations(email,token_hash,course_id,expires_at) VALUES($1,$2,$3,now()+interval '7 days')",
+      [data.email, hash(credential), data.courseId ?? null],
+    );
+    await audit("invitation_link_created", user.id);
+    return NextResponse.json({
+      ok: true,
+      email: data.email,
+      inviteUrl: `${config().APP_ORIGIN}/invite#${credential}`,
+    });
+  }
+
   if (path[1] === "courses") {
     const data = courseSchema.parse(body);
     if (path[2])
@@ -384,7 +456,7 @@ export async function api(request: Request) {
     return verifyBrowser(request, user);
   if (path[0] === "account" && request.method === "DELETE" && path[2])
     return revokeResource(user, path[1], idSchema.parse(path[2]));
-  if (path[0] === "admin" && request.method === "POST") {
+  if (path[0] === "admin" && ["POST", "DELETE"].includes(request.method)) {
     const admin = await requireViewer({ admin: true, trusted: true });
     return adminMutation(request, path, admin);
   }
