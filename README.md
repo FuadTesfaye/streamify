@@ -35,7 +35,22 @@ Requires Node.js 22.14+, pnpm 10.33.2, Docker, and Docker Compose v2.
 4. Sign in, configure an authenticator app, save its recovery codes, and verify your browser using the code in Mailpit. Open **Administration**.
 5. Create a course and lesson, supply your own unlisted YouTube video, publish both, and invite a student. The invitation optionally grants the initial course enrollment. Existing accounts use the enrollment form instead.
 
-There are no default accounts or seeded passwords. A bootstrap administrator is email-verified by the operator; students must verify their email. Invitations expire in seven days. Use the exact configured origin (`localhost` and `127.0.0.1` are different origins).
+There are seeded demonstration accounts ready for evaluation, or you can create custom administrators.
+
+### Demo Seed Accounts
+
+Running `pnpm db:seed` seeds the following evaluation accounts and courses:
+
+- **Administrator:**
+  - Email: `admin@streamify.com`
+  - Password: `AdminPassword123!`
+  - Pre-registered trusted browser included for instant access to the `/admin` Gateway Console.
+- **Students:**
+  - `sarah.chen@example.com` / `StudentPass123!` (Enrolled in Web Dev & Systems)
+  - `alex.rivera@example.com` / `StudentPass123!` (Enrolled in Web Dev)
+  - `marcus.v@example.com` / `StudentPass123!` (Enrolled in TypeScript)
+  - `elena.r@example.com` / `StudentPass123!` (Suspended account for testing)
+- **Courses:** 4 comprehensive courses with 8 lessons, sample pending invitations, and audit logs.
 
 For host-based development with live editing:
 
