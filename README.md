@@ -1,8 +1,17 @@
-# Streamify
+# Streamify — Private Video Streaming Gateway
 
-A free, invitation-only course application for adult students. Students can browse enrolled courses and play lessons through the official YouTube IFrame Player API. Administrators manage publishing, invitations, enrollment, suspension, and access revocation.
+A high-security, invitation-only private video streaming gateway using YouTube as the video hosting and delivery infrastructure, with zero-trust application authorization, ephemeral playback leases, copy-paste expiring embed tokens, and dynamic forensic watermarking.
 
 **Application authorization does not protect an extracted unlisted YouTube link.** The authorized browser receives the video ID. Direct YouTube sharing, screen recording, and per-user revocation at YouTube remain outside this application's control. There are no payments or DRM claims.
+
+## Security Architecture
+
+1. **Concealed Provider Infrastructure:** Video IDs are stored encrypted/protected on PostgreSQL/Supabase and never exposed in client bundles, public URLs, sitemaps, or unauthenticated APIs.
+2. **Heartbeat-Renewed Leases:** Every playback session is granted a 90-second lease renewed every 30 seconds via cryptographic heartbeat. Abandoned leases expire immediately.
+3. **Single-Stream Concurrency Guard:** Concurrent playback lock prevents simultaneous streaming on multiple tabs or devices under the same account.
+4. **Ephemeral Embed Tokens:** Generate signed, time-bound embed snippets (`/embed/[token]`). Tokens expire within 3 minutes and invalidate upon copy-paste or session expiration.
+5. **Dynamic Forensic Watermark:** Floating overlay with masked viewer identity, session ID, and UTC timestamp shifts coordinates continuously to deter screen recording and leak distribution.
+
 
 ## Run locally
 
