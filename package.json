@@ -23,9 +23,11 @@
   },
   "dependencies": {
     "better-auth": "1.7.5",
+    "drizzle-orm": "^0.45.4",
     "lucide-react": "1.61.0",
     "next": "16.4.3",
     "pg": "8.23.1",
+    "postgres": "^4.0.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zod": "4.6.7"
@@ -36,6 +38,7 @@
     "@types/pg": "8.23.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.3",
+    "drizzle-kit": "^0.31.11",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.3",
     "tsx": "4.23.15",
