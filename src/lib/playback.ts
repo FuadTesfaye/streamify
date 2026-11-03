@@ -8,15 +8,24 @@ import {
 import { assert } from "./errors";
 import { LEASE_MS } from "./policy";
 import { audit } from "./security";
-export interface PlaybackProvider {
-  name: "youtube";
-  launch(videoId: string): { provider: "youtube"; videoId: string };
-}
-const youtube: PlaybackProvider = {
-  name: "youtube",
-  launch: (videoId) => ({ provider: "youtube", videoId }),
-};
-export async function launchPlayback(user: Viewer, lessonId: string) {
+import { config } from "./config";
+import {
+  launchProviderPlayback,
+  type PlaybackDescriptor,
+  type ProviderType,
+} from "./providers";
+
+export type { PlaybackDescriptor, ProviderType };
+
+export async function launchPlayback(
+  user: Viewer,
+  lessonId: string,
+): Promise<
+  {
+    playbackSessionId: string;
+    expiresAt: string;
+  } & PlaybackDescriptor
+> {
   return tx(async (client) => {
     await lockAccount(client, user.id);
     await checkLockedSession(client, user);
@@ -39,13 +48,33 @@ export async function launchPlayback(user: Viewer, lessonId: string) {
       client,
     );
     await audit("playback_granted", user.id, session.id, client);
+
+    const descriptor = await launchProviderPlayback(
+      {
+        id: lesson.id,
+        title: lesson.title,
+        videoId: lesson.video_id,
+        provider: lesson.provider,
+        visibility: lesson.visibility,
+        playbackPolicy: lesson.playback_policy,
+      },
+      {
+        userId: user.id,
+        userEmail: user.email,
+        sessionId: user.sessionId,
+        browserId: user.browserId,
+        appOrigin: config().APP_ORIGIN,
+      },
+    );
+
     return {
       playbackSessionId: session.id,
-      ...youtube.launch(lesson.video_id),
       expiresAt: expiresAt.toISOString(),
+      ...descriptor,
     };
   });
 }
+
 export async function heartbeat(user: Viewer, id: string) {
   return tx(async (client) => {
     await lockAccount(client, user.id);
@@ -65,6 +94,7 @@ export async function heartbeat(user: Viewer, id: string) {
     return { expiresAt: expiresAt.toISOString() };
   });
 }
+
 export async function releasePlayback(user: Viewer, id: string) {
   await tx(async (client) => {
     await lockAccount(client, user.id);

@@ -76,25 +76,53 @@ export async function requireViewer(
   }
   return viewer;
 }
+export interface AuthorizedLesson {
+  id: string;
+  course_id: string;
+  title: string;
+  description: string;
+  video_id: string;
+  provider: "youtube" | "mux" | "cloudflare";
+  visibility: "free" | "paid";
+  playback_policy: "public" | "signed" | "drm";
+  is_premium: boolean;
+  price: number;
+  expires_at: Date | null;
+}
+
 export async function authorizeLesson(
   user: Viewer,
   lessonId: string,
   client: PoolClient | typeof db = db,
-) {
+): Promise<AuthorizedLesson> {
   // Repeat mutable checks inside the account lock for playback operations.
-  const [lesson] = await rows<{
-    id: string;
-    course_id: string;
-    title: string;
-    description: string;
-    video_id: string;
-    provider: "youtube";
-  }>(
-    `SELECT l.* FROM lessons l JOIN courses c ON c.id=l.course_id JOIN enrollments e ON e.course_id=c.id JOIN "user" u ON u.id=e.user_id WHERE l.id=$1 AND e.user_id=$2 AND e.active AND l.published AND c.published AND u.status='active'`,
+  const [lesson] = await rows<AuthorizedLesson>(
+    `SELECT l.id, l.course_id, l.title, l.description, l.video_id,
+            COALESCE(l.provider, 'youtube') as provider,
+            COALESCE(l.visibility, 'free') as visibility,
+            COALESCE(l.playback_policy, 'public') as playback_policy,
+            COALESCE(c.is_premium, false) as is_premium,
+            COALESCE(c.price, 0) as price,
+            e.expires_at
+     FROM lessons l
+     JOIN courses c ON c.id=l.course_id
+     JOIN enrollments e ON e.course_id=c.id
+     JOIN "user" u ON u.id=e.user_id
+     WHERE l.id=$1 AND e.user_id=$2 AND e.active AND l.published AND c.published AND u.status='active'`,
     [lessonId, user.id],
     client,
   );
   assert(lesson, 403, "LESSON_ACCESS_DENIED");
+
+  if (lesson.expires_at && new Date(lesson.expires_at).getTime() < Date.now()) {
+    assert(
+      false,
+      403,
+      "ENROLLMENT_EXPIRED",
+      "Your course access has expired. Please renew your enrollment.",
+    );
+  }
+
   return lesson;
 }
 export async function lockAccount(client: PoolClient, userId: string) {

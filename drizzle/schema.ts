@@ -8,6 +8,19 @@ import {
   primaryKey,
 } from "drizzle-orm/pg-core";
 
+export const users = pgTable("user", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  emailVerified: boolean("emailVerified").notNull().default(false),
+  image: text("image"),
+  role: text("role").notNull().default("viewer"),
+  status: text("status").notNull().default("active"),
+  twoFactorEnabled: boolean("twoFactorEnabled").notNull().default(false),
+  createdAt: timestamp("createdAt", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const courses = pgTable("courses", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
