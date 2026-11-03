@@ -20,6 +20,10 @@ import {
   ShieldAlert,
   Clock,
   Sparkles,
+  CreditCard,
+  DollarSign,
+  Calendar,
+  ShieldCheck,
 } from "lucide-react";
 import { request } from "./client-api";
 
@@ -152,6 +156,7 @@ export function AdminPanel({
 
   // Student search
   const [studentSearch, setStudentSearch] = useState("");
+  const [entitlementSearch, setEntitlementSearch] = useState("");
 
   // Direct invite link state
   const [generatedInviteUrl, setGeneratedInviteUrl] = useState("");
@@ -254,6 +259,7 @@ export function AdminPanel({
         {[
           ["gateway", "Gateway & Leases", Radio],
           ["content", "Course library", BookOpen],
+          ["revenue", "Entitlements & Revenue", Sparkles],
           ["people", "Students & access", Users],
           ["activity", "Security activity", Activity],
         ].map(([value, label, Icon]) => {
@@ -506,6 +512,7 @@ export function AdminPanel({
                   event.preventDefault();
                   const f = new FormData(event.currentTarget);
                   void run(async () => {
+                    const priceCents = Math.round(Number(f.get("price") || 0) * 100);
                     await request(
                       `/api/admin/courses${course ? "/" + course.id : ""}`,
                       {
@@ -513,6 +520,9 @@ export function AdminPanel({
                         description: String(f.get("description")),
                         category: String(f.get("category")),
                         published: f.has("published"),
+                        price: priceCents,
+                        isPremium: f.has("isPremium") || priceCents > 0,
+                        currency: "usd",
                       },
                     );
                     setCourse(null);
@@ -530,6 +540,32 @@ export function AdminPanel({
                     required
                   />
                 </label>
+                <div className="form-columns">
+                  <label>
+                    Category
+                    <input
+                      name="category"
+                      defaultValue={course?.category ?? "General"}
+                      maxLength={80}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Price (USD $)
+                    <input
+                      name="price"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      defaultValue={
+                        course?.price !== undefined
+                          ? (course.price / 100).toFixed(2)
+                          : "0.00"
+                      }
+                      placeholder="0.00 for Free"
+                    />
+                  </label>
+                </div>
                 <label>
                   Description
                   <textarea
@@ -539,23 +575,24 @@ export function AdminPanel({
                     rows={3}
                   />
                 </label>
-                <label>
-                  Category
-                  <input
-                    name="category"
-                    defaultValue={course?.category ?? "General"}
-                    maxLength={80}
-                    required
-                  />
-                </label>
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    name="published"
-                    defaultChecked={course?.published}
-                  />{" "}
-                  Published and available to enrolled students
-                </label>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", margin: "10px 0" }}>
+                  <label className="checkbox">
+                    <input
+                      type="checkbox"
+                      name="isPremium"
+                      defaultChecked={course?.is_premium}
+                    />{" "}
+                    <strong>Premium Course</strong> (Requires paid entitlement or purchase)
+                  </label>
+                  <label className="checkbox">
+                    <input
+                      type="checkbox"
+                      name="published"
+                      defaultChecked={course?.published}
+                    />{" "}
+                    Published and available to students
+                  </label>
+                </div>
                 <button className="button" disabled={busy}>
                   <Plus size={16} />
                   {course ? "Save course" : "Create course"}
@@ -593,6 +630,9 @@ export function AdminPanel({
                         position: Number(f.get("position")),
                         video: String(f.get("video")),
                         published: f.has("published"),
+                        provider: String(f.get("provider") || "youtube"),
+                        visibility: String(f.get("visibility") || "free"),
+                        playbackPolicy: String(f.get("playbackPolicy") || "public"),
                       },
                     );
                     setLesson(null);
@@ -626,6 +666,40 @@ export function AdminPanel({
                 </label>
                 <div className="form-columns">
                   <label>
+                    Streaming Provider
+                    <select
+                      name="provider"
+                      defaultValue={lesson?.provider ?? "youtube"}
+                    >
+                      <option value="youtube">YouTube (Free / Unlisted)</option>
+                      <option value="mux">Mux Video (Hardware DRM Signed)</option>
+                      <option value="cloudflare">Cloudflare Stream (Tokenized)</option>
+                    </select>
+                  </label>
+                  <label>
+                    Visibility
+                    <select
+                      name="visibility"
+                      defaultValue={lesson?.visibility ?? "free"}
+                    >
+                      <option value="free">Free Preview / Open</option>
+                      <option value="paid">Paid (Entitlement Required)</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="form-columns">
+                  <label>
+                    Playback Policy
+                    <select
+                      name="playbackPolicy"
+                      defaultValue={lesson?.playback_policy ?? "public"}
+                    >
+                      <option value="public">Public Playback</option>
+                      <option value="signed">Signed Token (5-minute lease)</option>
+                      <option value="drm">Hardware DRM + Watermark</option>
+                    </select>
+                  </label>
+                  <label>
                     Position
                     <input
                       name="position"
@@ -636,17 +710,17 @@ export function AdminPanel({
                       required
                     />
                   </label>
-                  <label>
-                    YouTube URL or ID
-                    <input
-                      name="video"
-                      defaultValue={lesson?.video_id}
-                      placeholder="e.g. dQw4w9WgXcQ or https://..."
-                      maxLength={500}
-                      required
-                    />
-                  </label>
                 </div>
+                <label>
+                  Video ID / Stream Asset ID
+                  <input
+                    name="video"
+                    defaultValue={lesson?.video_id}
+                    placeholder="YouTube ID / Mux Playback ID"
+                    maxLength={500}
+                    required
+                  />
+                </label>
                 <label>
                   Description
                   <textarea
@@ -678,7 +752,22 @@ export function AdminPanel({
               <div className="admin-course" key={c.id}>
                 <div className="resource-row">
                   <div>
-                    <strong>{c.title}</strong>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                      <strong>{c.title}</strong>
+                      <span
+                        className="badge"
+                        style={{
+                          background: c.is_premium
+                            ? "rgba(186, 110, 78, 0.15)"
+                            : "rgba(41, 76, 60, 0.12)",
+                          color: c.is_premium ? "#ba6e4e" : "var(--forest)",
+                        }}
+                      >
+                        {c.is_premium
+                          ? `$${((c.price ?? 0) / 100).toFixed(2)} · Premium`
+                          : "Free"}
+                      </span>
+                    </div>
                     <small>
                       {c.category} · {c.published ? "Published" : "Draft"}
                     </small>
@@ -709,11 +798,54 @@ export function AdminPanel({
                   .filter((l) => l.course_id === c.id)
                   .map((l) => (
                     <div className="admin-lesson" key={l.id}>
-                      <span>
-                        {l.position}. {l.title}
+                      <span style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <span>
+                          {l.position}. {l.title}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            padding: "1px 6px",
+                            borderRadius: "4px",
+                            background:
+                              l.provider === "mux"
+                                ? "#eef4ff"
+                                : l.provider === "cloudflare"
+                                  ? "#fff4e5"
+                                  : "#ffeeec",
+                            color:
+                              l.provider === "mux"
+                                ? "#2980b9"
+                                : l.provider === "cloudflare"
+                                  ? "#d35400"
+                                  : "#c0392b",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {l.provider === "mux"
+                            ? "Mux DRM"
+                            : l.provider === "cloudflare"
+                              ? "Cloudflare Stream"
+                              : "YouTube"}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            padding: "1px 5px",
+                            borderRadius: "4px",
+                            background:
+                              l.visibility === "paid"
+                                ? "rgba(186, 110, 78, 0.12)"
+                                : "rgba(41, 76, 60, 0.1)",
+                            color:
+                              l.visibility === "paid" ? "#ba6e4e" : "var(--forest)",
+                          }}
+                        >
+                          {l.visibility === "paid" ? "Paid" : "Free"}
+                        </span>
                         <small>{l.published ? "Published" : "Draft"}</small>
-                        <small style={{ color: "#7a8278", marginLeft: "8px" }}>
-                          ID: {l.video_id.slice(0, 6)}…
+                        <small style={{ color: "#7a8278", marginLeft: "4px" }}>
+                          ID: {l.video_id.slice(0, 8)}…
                         </small>
                       </span>
                       <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
@@ -747,7 +879,464 @@ export function AdminPanel({
         </>
       )}
 
-      {/* TAB 3: STUDENTS & ACCESS */}
+      {/* TAB 3: ENTITLEMENTS & REVENUE */}
+      {tab === "revenue" && (
+        <>
+          {/* Revenue & Entitlements Metrics */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gap: "16px",
+              marginBottom: "24px",
+            }}
+          >
+            <div className="panel" style={{ padding: "18px 20px" }}>
+              <span className="eyebrow" style={{ color: "#294c3c" }}>
+                Total Revenue
+              </span>
+              <h2 style={{ fontSize: "28px", margin: "4px 0 0 0" }}>
+                $
+                {(
+                  payments.reduce(
+                    (acc, p) =>
+                      acc + (p.status === "completed" ? p.amount : 0),
+                    0,
+                  ) / 100
+                ).toFixed(2)}
+              </h2>
+              <small className="muted">{payments.length} total payments recorded</small>
+            </div>
+            <div className="panel" style={{ padding: "18px 20px" }}>
+              <span className="eyebrow">Active Entitlements</span>
+              <h2 style={{ fontSize: "28px", margin: "4px 0 0 0" }}>
+                {enrollments.filter((e) => e.active).length}
+              </h2>
+              <small className="muted">Enrolled student access grants</small>
+            </div>
+            <div className="panel" style={{ padding: "18px 20px" }}>
+              <span className="eyebrow">Premium Courses</span>
+              <h2 style={{ fontSize: "28px", margin: "4px 0 0 0" }}>
+                {courses.filter((c) => c.is_premium).length} / {courses.length}
+              </h2>
+              <small className="muted">Paid streaming catalog</small>
+            </div>
+            <div className="panel" style={{ padding: "18px 20px" }}>
+              <span className="eyebrow">Protected Streams</span>
+              <h2 style={{ fontSize: "28px", margin: "4px 0 0 0" }}>
+                {lessons.filter((l) => l.provider !== "youtube").length}
+              </h2>
+              <small className="muted">Mux DRM & Cloudflare streams</small>
+            </div>
+          </div>
+
+          <div className="account-grid">
+            {/* Quick Grant Access form */}
+            <section className="panel">
+              <div className="panel-title">
+                <Sparkles size={20} />
+                <h2>Grant Access by Student Email</h2>
+              </div>
+              <p className="muted">
+                Authorize any student by Google email address with custom access duration.
+              </p>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const form = event.currentTarget;
+                  const f = new FormData(form);
+                  const email = String(f.get("email")).trim();
+                  const courseId = String(f.get("courseId"));
+                  const durationVal = f.get("durationMonths");
+                  const durationMonths =
+                    durationVal === "lifetime" ? null : Number(durationVal);
+
+                  void run(async () => {
+                    await request("/api/admin/entitlements", {
+                      email,
+                      courseId,
+                      durationMonths,
+                    });
+                    form.reset();
+                    setSuccess(`Access granted to ${email} successfully.`);
+                  });
+                }}
+              >
+                <label>
+                  Student Google Email
+                  <input
+                    name="email"
+                    type="email"
+                    placeholder="student@gmail.com"
+                    required
+                  />
+                </label>
+                <label>
+                  Course
+                  <select name="courseId" required>
+                    {courses.map((c) => (
+                      <option value={c.id} key={c.id}>
+                        {c.title} (
+                        {c.is_premium
+                          ? `$${((c.price ?? 0) / 100).toFixed(2)}`
+                          : "Free"}
+                        )
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Access Duration
+                  <select name="durationMonths" defaultValue="12">
+                    <option value="1">1 Month (30 Days)</option>
+                    <option value="3">3 Months (90 Days)</option>
+                    <option value="6">6 Months (Semester)</option>
+                    <option value="12">12 Months (1 Full Year)</option>
+                    <option value="lifetime">Lifetime (Unexpiring)</option>
+                  </select>
+                </label>
+                <button
+                  className="button"
+                  disabled={busy || !courses.length}
+                  style={{ marginTop: "12px" }}
+                >
+                  <Sparkles size={16} /> Grant Student Entitlement
+                </button>
+              </form>
+            </section>
+
+            {/* Quick Payment Simulator */}
+            <section className="panel">
+              <div className="panel-title">
+                <CreditCard size={20} />
+                <h2>Record Payment & Entitlement</h2>
+              </div>
+              <p className="muted">
+                Manually record a completed invoice, bank transfer, or offline payment.
+              </p>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const form = event.currentTarget;
+                  const f = new FormData(form);
+                  const studentEmail = String(f.get("email")).trim();
+                  const courseId = String(f.get("courseId"));
+                  const amountCents = Math.round(Number(f.get("amount")) * 100);
+                  const provider = String(f.get("provider") || "manual_admin");
+
+                  void run(async () => {
+                    const res = await fetch("/api/payments/webhook", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        event: "payment.succeeded",
+                        provider,
+                        data: {
+                          userEmail: studentEmail,
+                          courseId,
+                          amount: amountCents,
+                          currency: "usd",
+                          durationMonths: 12,
+                        },
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok)
+                      throw new Error(
+                        data.message || "Failed to record payment.",
+                      );
+                    form.reset();
+                    setSuccess(
+                      `Payment of $${(amountCents / 100).toFixed(2)} recorded and entitlement granted.`,
+                    );
+                  });
+                }}
+              >
+                <label>
+                  Student Email
+                  <input
+                    name="email"
+                    type="email"
+                    placeholder="student@gmail.com"
+                    required
+                  />
+                </label>
+                <div className="form-columns">
+                  <label>
+                    Course
+                    <select name="courseId" required>
+                      {courses.map((c) => (
+                        <option value={c.id} key={c.id}>
+                          {c.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Amount Paid ($)
+                    <input
+                      name="amount"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      defaultValue="49.00"
+                      required
+                    />
+                  </label>
+                </div>
+                <label>
+                  Payment Source
+                  <select name="provider">
+                    <option value="stripe">Stripe Checkout</option>
+                    <option value="bank_transfer">Direct Bank Transfer</option>
+                    <option value="manual_admin">Manual Cash / Invoice</option>
+                  </select>
+                </label>
+                <button
+                  className="button secondary"
+                  disabled={busy || !courses.length}
+                  style={{ marginTop: "12px" }}
+                >
+                  <CreditCard size={16} /> Record Payment & Grant
+                </button>
+              </form>
+            </section>
+          </div>
+
+          {/* Student Entitlements List */}
+          <section className="panel" style={{ marginTop: "24px" }}>
+            <div className="section-heading compact">
+              <h2>
+                Active Student Entitlements (
+                {enrollments.filter((e) => e.active).length})
+              </h2>
+              <div style={{ position: "relative", width: "260px" }}>
+                <Search
+                  size={14}
+                  style={{
+                    position: "absolute",
+                    left: "10px",
+                    top: "12px",
+                    color: "#8a9690",
+                  }}
+                />
+                <input
+                  type="text"
+                  placeholder="Filter student or course…"
+                  value={entitlementSearch}
+                  onChange={(e) => setEntitlementSearch(e.target.value)}
+                  style={{ paddingLeft: "32px", fontSize: "13px" }}
+                />
+              </div>
+            </div>
+
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Course</th>
+                    <th>Access Status</th>
+                    <th>Expiration</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {enrollments
+                    .filter(
+                      (e) =>
+                        e.user_email
+                          .toLowerCase()
+                          .includes(entitlementSearch.toLowerCase()) ||
+                        e.course_title
+                          .toLowerCase()
+                          .includes(entitlementSearch.toLowerCase()),
+                    )
+                    .map((e) => {
+                      const isExpired =
+                        e.expires_at &&
+                        new Date(e.expires_at).getTime() < Date.now();
+                      return (
+                        <tr key={e.id}>
+                          <td>
+                            <strong>{e.user_email}</strong>
+                          </td>
+                          <td>{e.course_title}</td>
+                          <td>
+                            <span
+                              className={`badge ${e.active && !isExpired ? "active" : ""}`}
+                              style={{
+                                background: isExpired
+                                  ? "#ffeeec"
+                                  : e.active
+                                    ? "rgba(41, 76, 60, 0.12)"
+                                    : "#f0f0f0",
+                                color: isExpired
+                                  ? "#c0392b"
+                                  : e.active
+                                    ? "var(--forest)"
+                                    : "#888",
+                              }}
+                            >
+                              {isExpired
+                                ? "Expired"
+                                : e.active
+                                  ? "Active"
+                                  : "Revoked"}
+                            </span>
+                          </td>
+                          <td>
+                            {e.expires_at ? (
+                              <small>
+                                {new Date(e.expires_at).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    year: "numeric",
+                                    month: "short",
+                                    day: "numeric",
+                                  },
+                                )}
+                              </small>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: "12px",
+                                  color: "var(--forest)",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Lifetime
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {e.active && (
+                              <button
+                                className="text-button danger-text"
+                                disabled={busy}
+                                onClick={() =>
+                                  run(async () => {
+                                    if (
+                                      !confirm(
+                                        `Revoke access for ${e.user_email} to ${e.course_title}?`,
+                                      )
+                                    )
+                                      return;
+                                    await request(
+                                      "/api/admin/entitlements",
+                                      {
+                                        userId: e.user_id,
+                                        courseId: e.course_id,
+                                      },
+                                      "DELETE",
+                                    );
+                                    setSuccess("Entitlement revoked.");
+                                  })
+                                }
+                              >
+                                Revoke Access
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Payment Transactions Audit Ledger */}
+          <section className="panel" style={{ marginTop: "24px" }}>
+            <div className="section-heading compact">
+              <div>
+                <h2>Payment & Revenue Audit Ledger</h2>
+                <small className="muted">
+                  Recent recorded course transactions ({payments.length})
+                </small>
+              </div>
+            </div>
+
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Reference</th>
+                    <th>Student</th>
+                    <th>Course</th>
+                    <th>Amount</th>
+                    <th>Provider</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.map((p) => (
+                    <tr key={p.id}>
+                      <td>
+                        <code style={{ fontSize: "11px" }}>
+                          {p.transaction_reference}
+                        </code>
+                      </td>
+                      <td>{p.user_email}</td>
+                      <td>{p.course_title}</td>
+                      <td>
+                        <strong>${(p.amount / 100).toFixed(2)}</strong>{" "}
+                        {p.currency.toUpperCase()}
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          {p.provider}
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          className={`badge ${p.status === "completed" ? "active" : ""}`}
+                          style={{
+                            background:
+                              p.status === "completed"
+                                ? "rgba(41, 76, 60, 0.12)"
+                                : "#ffeeec",
+                            color:
+                              p.status === "completed"
+                                ? "var(--forest)"
+                                : "#c0392b",
+                          }}
+                        >
+                          {p.status}
+                        </span>
+                      </td>
+                      <td>{new Date(p.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                  {!payments.length && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        style={{
+                          textAlign: "center",
+                          color: "#888",
+                          padding: "24px",
+                        }}
+                      >
+                        No payments recorded yet. Use the simulator above or
+                        automated webhooks to record purchases.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* TAB 4: STUDENTS & ACCESS */}
       {tab === "people" && (
         <>
           <div className="account-grid">
