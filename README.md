@@ -1,6 +1,6 @@
 # Streamify — Private Video Streaming Gateway
 
-A high-security, invitation-only private video streaming gateway using YouTube as the video hosting and delivery infrastructure, with zero-trust application authorization, ephemeral playback leases, copy-paste expiring embed tokens, and dynamic forensic watermarking.
+A high-security, invitation-only private video streaming gateway featuring a Farce-inspired aesthetic with serene pixel-art forest backdrops, zero-trust application authorization, ephemeral playback leases, copy-paste expiring embed tokens, and dynamic forensic watermarking.
 
 **Application authorization does not protect an extracted unlisted YouTube link.** The authorized browser receives the video ID. Direct YouTube sharing, screen recording, and per-user revocation at YouTube remain outside this application's control. There are no payments or DRM claims.
 
