@@ -1,19 +1,31 @@
-# Streamify — Private Video Streaming Gateway
+# Streamify — Unified Multi-Provider Video Gateway & Learning Platform
 
-A high-security, invitation-only private video streaming gateway featuring a Farce-inspired aesthetic with serene pixel-art forest backdrops, zero-trust application authorization, ephemeral playback leases, copy-paste expiring embed tokens, dynamic forensic watermarking, and an institutional command center.
+A high-security, invitation-only private video streaming gateway featuring a Farce-inspired aesthetic with serene pixel-art forest backdrops, zero-trust application authorization, multi-provider video delivery (Free YouTube preview + Paid Mux / Cloudflare DRM), automated payment entitlements, ephemeral playback leases, copy-paste expiring embed tokens, dynamic forensic watermarking, and an institutional command center.
 
-**Application authorization does not protect an extracted unlisted YouTube link.** The authorized browser receives the video ID. Direct YouTube sharing, screen recording, and per-user revocation at YouTube remain outside this application's control. There are no payments or DRM claims.
+## Multi-Provider Architecture
 
-## Security Architecture
+Streamify solves the core limitation of unlisted video sharing by separating content tiers into distinct security regimes:
 
-1. **Concealed Provider Infrastructure:** Video IDs are stored encrypted/protected on PostgreSQL/Supabase and never exposed in client bundles, public URLs, sitemaps, or unauthenticated APIs.
-2. **Heartbeat-Renewed Leases:** Every playback session is granted a 90-second lease renewed every 30 seconds via cryptographic heartbeat. Abandoned leases expire immediately.
-3. **Single-Stream Concurrency Guard:** Concurrent playback lock prevents simultaneous streaming on multiple tabs or devices under the same account.
-4. **Ephemeral Embed Tokens:** Generate signed, time-bound embed snippets (`/embed/[token]`). Tokens expire within 3 minutes and invalidate upon copy-paste or session expiration.
-5. **Dynamic Forensic Watermark:** Floating overlay with masked viewer identity, session ID, and UTC timestamp shifts coordinates continuously to deter screen recording and leak distribution.
+| Tier | Provider | Security Model | Use Case |
+| ---- | -------- | -------------- | -------- |
+| **Free / Open Preview** | **YouTube** | Unlisted iframe embed + direct watch link | Intro lessons, curriculum overviews, promotional previews |
+| **Paid / Protected** | **Mux Video** | Hardware DRM + cryptographically signed tokens + forensic watermark | Premium courses, sensitive lectures, paid certification programs |
+| **Paid / Protected** | **Cloudflare Stream** | Signed token manifests + domain origin locks | High-bitrate global streaming with token verification |
 
+> [!NOTE]
+> YouTube Unlisted content cannot be fully paywalled at the network level because anyone with the raw video ID can stream it directly on YouTube. Premium paid content is protected via **Mux Video** and **Cloudflare Stream**, enforcing hardware DRM and signed playback tokens that expire automatically.
 
-## Run locally
+## Security & Entitlement Architecture
+
+1. **Modular Streaming Gateway (`src/lib/providers`):** Dispatches playback requests to YouTube, Mux, or Cloudflare Stream. For Mux/Cloudflare, generates short-lived signed JWTs containing user claims (`sub: playbackId`, `aud: 'v'`, `custom_watermark: email`).
+2. **Entitlement & Duration Engine (`src/lib/payments.ts`):** Supports time-bounded course access (1 month, 3 months, 6 months, 12 months, or lifetime). Expirations are enforced at the database level during lesson authorization and playback heartbeats.
+3. **Heartbeat-Renewed Leases:** Every playback session is granted a 90-second lease renewed every 30 seconds via cryptographic heartbeat. Abandoned leases expire immediately.
+4. **Single-Stream Concurrency Guard:** Concurrent playback lock prevents simultaneous streaming on multiple tabs or devices under the same account using PostgreSQL transactional row locks.
+5. **Ephemeral Embed Tokens (`/embed/[token]`):** Single-use, time-bound embed snippets with 3-minute validity that invalidate upon copy-paste or session expiration.
+6. **Dynamic Shifting Forensic Watermark (`ViewerWatermark`):** Floating overlay with masked viewer identity, session ID, and UTC timestamp shifts coordinates continuously to deter screen recording and leak distribution.
+7. **Automated Checkout & Webhook Ledger:** Automated payment processing (`/api/payments/checkout`, `/api/payments/webhook`) records transactions in the financial ledger and activates student access.
+
+## Run Locally
 
 Requires Node.js 22.14+, pnpm 10.33.2, Docker, and Docker Compose v2.
 
@@ -81,9 +93,15 @@ Host commands load `.env` for migration, seeding, administrator creation, and ev
 | `POST /api/invitations/accept`                          | Redeem an email-bound, single-use invitation                                     |
 | `POST /api/browsers/challenge`                          | Send browser verification OTP                                                    |
 | `POST /api/browsers/verify`                             | Verify OTP and issue the browser cookie                                          |
-| `POST /api/lessons/:id/playback`                        | Return `{ playbackSessionId, provider, videoId, expiresAt }` after authorization |
+| `POST /api/lessons/:id/playback`                        | Launch multi-provider playback (YouTube embed, Mux signed DRM, Cloudflare)       |
 | `POST /api/playback/:id/heartbeat`                      | Renew a lease owned by the current login and browser                             |
 | `POST /api/playback/:id/release`                        | Release that playback                                                            |
+| `POST /api/embed/generate`                              | Generate single-use, 3-minute ephemeral embed snippet                            |
+| `POST /api/embed/verify`                                | Cryptographically verify ephemeral embed token and authorize player              |
+| `POST /api/payments/checkout`                           | Instant student course purchase / enrollment with entitlement activation        |
+| `POST /api/payments/webhook`                            | Payment provider webhook (Stripe/LemonSqueezy) to record transactions           |
+| `POST /api/admin/entitlements`                          | Grant time-bounded course access by student email (1 mo, 3 mo, 1 yr, lifetime)   |
+| `DELETE /api/admin/entitlements`                        | Revoke student course entitlement and terminate active playback sessions         |
 | `GET /api/account`                                      | List this account's browsers, login sessions, and playbacks without credentials  |
 | `DELETE /api/account/{browsers,sessions,playbacks}/:id` | Revoke an owned resource                                                         |
 | `POST /api/admin/...`                                   | MFA- and browser-protected content and access management                         |
