@@ -6,10 +6,14 @@ import {
   type AdminCourse,
   type AdminLesson,
   type AdminUser,
+  type AdminEnrollment,
+  type AdminInvitation,
+  type AdminPlayback,
 } from "@/components/admin-panel";
+
 export default async function Admin() {
   await pageViewer({ trusted: true, admin: true });
-  const [courses, lessons, users, events, browsers, playbacks, clock] =
+  const [courses, lessons, users, events, browsers, playbacks, enrollments, invitations, clock] =
     await Promise.all([
       rows<AdminCourse>(
         "SELECT id,title,description,category,published FROM courses ORDER BY created_at DESC",
@@ -35,23 +39,54 @@ export default async function Admin() {
       rows<{
         id: string;
         user_id: string;
+        user_email: string;
         lesson_title: string;
+        course_title: string;
+        created_at: Date;
         expires_at: Date;
       }>(
-        "SELECT p.id,p.user_id,l.title AS lesson_title,p.expires_at FROM playback_sessions p JOIN lessons l ON l.id=p.lesson_id WHERE p.revoked_at IS NULL AND p.expires_at>now()",
+        `SELECT p.id, p.user_id, u.email as user_email, l.title AS lesson_title, c.title as course_title, p.created_at, p.expires_at
+         FROM playback_sessions p
+         JOIN lessons l ON l.id = p.lesson_id
+         JOIN courses c ON c.id = l.course_id
+         JOIN "user" u ON u.id = p.user_id
+         WHERE p.revoked_at IS NULL AND p.expires_at > now()
+         ORDER BY p.created_at DESC`,
+      ),
+      rows<AdminEnrollment>(
+        `SELECT e.id, e.user_id, e.course_id, e.active, c.title as course_title, u.email as user_email
+         FROM enrollments e
+         JOIN courses c ON c.id = e.course_id
+         JOIN "user" u ON u.id = e.user_id
+         ORDER BY c.title ASC`,
+      ),
+      rows<{
+        id: string;
+        email: string;
+        course_id: string | null;
+        course_title: string | null;
+        accepted_at: Date | null;
+        expires_at: Date;
+        created_at: Date;
+      }>(
+        `SELECT i.id, i.email, i.course_id, c.title as course_title, i.accepted_at, i.expires_at, i.created_at
+         FROM invitations i
+         LEFT JOIN courses c ON c.id = i.course_id
+         ORDER BY i.created_at DESC LIMIT 20`,
       ),
       rows<{ now: Date }>("SELECT now() AS now"),
     ]);
+
   return (
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Institution workspace</span>
+          <span className="eyebrow">Gateway Command Center</span>
           <h1>
-            A thoughtful place to manage<span className="accent">.</span>
+            Administration & Video Gateway<span className="accent">.</span>
           </h1>
           <p>
-            Curate your courses, welcome students, and keep an eye on access.
+            Manage private courses, student enrollments, live playback leases, and ephemeral embed tokens.
           </p>
         </div>
       </div>
@@ -60,6 +95,13 @@ export default async function Admin() {
         courses={courses}
         lessons={lessons}
         users={users}
+        enrollments={enrollments}
+        invitations={invitations.map((i) => ({
+          ...i,
+          accepted_at: i.accepted_at ? i.accepted_at.toISOString() : null,
+          expires_at: i.expires_at.toISOString(),
+          created_at: i.created_at.toISOString(),
+        }))}
         events={events.map((e) => ({
           ...e,
           created_at: e.created_at.toISOString(),
@@ -70,6 +112,7 @@ export default async function Admin() {
         }))}
         playbacks={playbacks.map((p) => ({
           ...p,
+          created_at: p.created_at.toISOString(),
           expires_at: p.expires_at.toISOString(),
         }))}
       />
